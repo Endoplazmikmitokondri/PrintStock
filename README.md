@@ -5,7 +5,6 @@
 It runs locally on your machine with a browser-based interface, requiring **no installation**. Just download, extract, and run.
 
 ![PrintStock Dashboard](docs/main-dashboard.png)
-*(Replace this link with a real screenshot of your application)*
 
 ## 🚀 Features
 
