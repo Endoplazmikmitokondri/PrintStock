@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="PrintStock.API/PrintStock.API.csproj" />
+  <Project Path="PrintStock.Application/PrintStock.Application.csproj" />
+  <Project Path="PrintStock.Domain/PrintStock.Domain.csproj" />
+  <Project Path="PrintStock.Infrastructure/PrintStock.Infrastructure.csproj" />
+  <Project Path="PrintStock.UI/PrintStock.UI.csproj" />
+</Solution>

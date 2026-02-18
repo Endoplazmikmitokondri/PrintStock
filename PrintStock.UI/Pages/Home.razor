@@ -1,0 +1,315 @@
+﻿@page "/"
+@using PrintStock.UI.Services
+@using PrintStock.Application.DTOs
+@using PrintStock.Domain.Enums
+@inject FilamentHttpClient FilamentService
+@inject IJSRuntime JS
+
+<PageTitle>PrintStock - Professional Workshop Dashboard</PageTitle>
+
+@* --- TOAST NOTIFICATION SYSTEM --- *@
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1060;">
+    @foreach (var toast in toasts.ToList())
+    {
+        <div class="toast show align-items-center text-white bg-@toast.Type border-0 shadow mb-2" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi @(toast.Type == "danger" ? "bi-exclamation-triangle" : "bi-check-circle") me-2"></i>
+                    @toast.Message
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" @onclick="() => toasts.Remove(toast)"></button>
+            </div>
+        </div>
+    }
+</div>
+
+<div class="container mt-4">
+    @* --- 1. DASHBOARD SUMMARY --- *@
+    <div class="row mb-4">
+        <div class="col-md-3 mb-2 text-center">
+            <div class="card bg-primary text-white shadow-sm border-0 h-100">
+                <div class="card-body p-3">
+                    <h6 class="small text-uppercase opacity-75">Total Stock</h6>
+                    <h4 class="fw-bold mb-0">@((filaments?.Sum(f => f.RemainingWeight) / 1000.0)?.ToString("N2")) kg</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2 text-center">
+            <div class="card bg-success text-white shadow-sm border-0 h-100">
+                <div class="card-body p-3">
+                    <h6 class="small text-uppercase opacity-75">Inventory Value</h6>
+                    <h4 class="fw-bold mb-0">@filaments?.Sum(f => f.CurrentStockValue).ToString("N2")</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2 text-center">
+            <div class="card bg-info text-white shadow-sm border-0 h-100">
+                <div class="card-body p-3">
+                    <h6 class="small text-uppercase opacity-75">Active Spools</h6>
+                    <h4 class="fw-bold mb-0">@filaments?.Count(f => f.Status == FilamentStatus.Active)</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2 text-center">
+            <div class="card bg-warning text-dark shadow-sm border-0 h-100">
+                <div class="card-body p-3">
+                    <h6 class="small text-uppercase opacity-75">Low Stock</h6>
+                    <h4 class="fw-bold mb-0">@filaments?.Count(f => f.RemainingWeight > 0 && f.RemainingWeight < 100)</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold text-dark m-0">Workshop Inventory</h2>
+        <button class="btn btn-primary px-4 shadow-sm fw-bold" data-bs-toggle="modal" data-bs-target="#addSpoolModal">
+            <i class="bi bi-plus-lg"></i> ADD NEW SPOOL
+        </button>
+    </div>
+
+    @* --- 2. FILAMENT CARDS --- *@
+    @if (filaments == null)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else
+    {
+        <div class="row">
+            @foreach (var item in filaments)
+            {
+                var isFinished = item.RemainingWeight <= 0;
+                var isLow = item.RemainingWeight > 0 && item.RemainingWeight < 100;
+                var cardColor = isFinished ? "secondary" : isLow ? "warning" : "primary";
+
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 shadow-sm border-2 border-@cardColor">
+                        <div class="card-body d-flex flex-column">
+                            <div class="d-flex justify-content-between">
+                                <h5 class="card-title fw-bold m-0 text-truncate" title="@item.Brand @item.MaterialType">@item.Brand @item.MaterialType</h5>
+                                <div>
+                                    <button class="btn btn-link text-primary p-0 me-2" @onclick="() => OpenEditModal(item)"><i class="bi bi-pencil-square"></i></button>
+                                    <button class="btn btn-link text-danger p-0" @onclick="() => HandleDelete(item.Id)"><i class="bi bi-trash3-fill"></i></button>
+                                </div>
+                            </div>
+                            <h6 class="text-muted small mb-3 text-truncate">@item.Color</h6>
+
+                            <div class="bg-light p-2 rounded border mb-3 small shadow-sm">
+                                <div class="row g-1 text-center">
+                                    <div class="col-6"><i class="bi bi-thermometer-high text-danger"></i> <b>@(item.OptimalTemp > 0 ? item.OptimalTemp + "°C" : "N/A")</b></div>
+                                    <div class="col-6"><i class="bi bi-layers-fill text-warning"></i> <b>@(item.BedTemp > 0 ? item.BedTemp + "°C" : "N/A")</b></div>
+                                    <div class="col-12 mt-1 text-truncate border-top pt-1"><i class="bi bi-geo-alt text-primary"></i> <b>@(string.IsNullOrEmpty(item.StorageLocation) ? "N/A" : item.StorageLocation)</b></div>
+                                    @if(item.IsInDryBox){ <div class="col-12 mt-1"><span class="badge bg-info text-dark w-100"><i class="bi bi-droplet-half"></i> In Dry Box</span></div> }
+                                </div>
+                            </div>
+
+                            <div class="progress mb-2" style="height: 10px;">
+                                <div class="progress-bar bg-@cardColor" style="width: @((item.RemainingWeight / (double)item.TotalWeight) * 100)%"></div>
+                            </div>
+                            <div class="d-flex justify-content-between small mb-3">
+                                <b>@item.WeightDisplay left</b>
+                                <span class="text-muted">Value: @item.CurrentStockValue.ToString("N2")</span>
+                            </div>
+
+                            <div class="mt-auto input-group input-group-sm">
+                                <input type="number" class="form-control text-center" @bind="usageAmounts[item.Id]" placeholder="amount" min="0" />
+                                <select class="form-select" @bind="usageUnits[item.Id]" style="max-width: 70px;">
+                                    <option value="@WeightUnit.Gram">g</option>
+                                    <option value="@WeightUnit.Kilogram">kg</option>
+                                </select>
+                                <button class="btn btn-danger" @onclick="() => HandleDeduct(item.Id)" disabled="@isFinished"><i class="bi bi-dash-lg"></i></button>
+                                <button class="btn btn-success" @onclick="() => HandleAddStock(item.Id)"><i class="bi bi-plus-lg"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @* --- 3. ADD MODAL --- *@
+    <div class="modal fade" id="addSpoolModal" tabindex="-1">
+        <div class="modal-dialog modal-lg shadow-lg">
+            <div class="modal-content border-0">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="fw-bold mb-0">Register New Spool</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6"><label class="form-label fw-bold">Brand</label><input type="text" class="form-control" @bind="newFilament.Brand" maxlength="50" placeholder="e.g. Porima, Esun" /></div>
+                        <div class="col-md-3"><label class="form-label fw-bold">Material</label><select class="form-select" @bind="newFilament.MaterialType"><option value="PLA+">PLA+</option><option value="PETG">PETG</option><option value="TPU">TPU</option><option value="ABS">ABS</option></select></div>
+                        <div class="col-md-3"><label class="form-label fw-bold">Date</label><input type="date" class="form-control" @bind="newFilament.PurchaseDate" max="@maxDate" /></div>
+                        
+                        <div class="col-md-6"><label class="form-label fw-bold">Color</label><input type="text" class="form-control" @bind="newFilament.Color" maxlength="30" placeholder="e.g. Galaxy Black" /></div>
+                        <div class="col-md-6"><label class="form-label fw-bold">Initial Weight (g)</label><input type="number" class="form-control" @bind="newFilament.TotalWeight" min="0" max="100000" placeholder="e.g. 1000" /></div>
+
+                        <div class="col-md-4"><label class="form-label fw-bold">Price</label><input type="number" class="form-control" @bind="newFilament.Price" min="0" max="99999" step="0.01" placeholder="e.g. 450.00" /></div>
+                        <div class="col-md-4"><label class="form-label fw-bold">Nozzle (°C)</label><input type="number" class="form-control" @bind="newFilament.OptimalTemp" min="0" max="500" placeholder="e.g. 210" /></div>
+                        <div class="col-md-4"><label class="form-label fw-bold">Bed (°C)</label><input type="number" class="form-control" @bind="newFilament.BedTemp" min="0" max="200" placeholder="e.g. 60" /></div>
+                        
+                        <div class="col-md-8"><label class="form-label fw-bold">Storage Location</label><input type="text" class="form-control" @bind="newFilament.StorageLocation" maxlength="50" placeholder="e.g. Shelf A1" /></div>
+                        <div class="col-md-4 mt-4"><div class="form-check form-switch pt-2"><input class="form-check-input" type="checkbox" @bind="newFilament.IsInDryBox"><label class="form-check-label fw-bold">Dry Box Storage</label></div></div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light"><button class="btn btn-primary w-100 fw-bold shadow" @onclick="SaveNewFilament" data-bs-dismiss="modal">SAVE TO SHELF</button></div>
+            </div>
+        </div>
+    </div>
+
+    @* --- 4. EDIT MODAL --- *@
+    <div class="modal fade" id="editSpoolModal" tabindex="-1">
+        <div class="modal-dialog modal-lg shadow-lg">
+            <div class="modal-content border-0">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="fw-bold mb-0">Update Spool Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    @if (editingFilament != null)
+                    {
+                        <div class="row g-3">
+                            <div class="col-md-6"><label class="form-label fw-bold">Brand</label><input type="text" class="form-control" @bind="editingFilament.Brand" maxlength="50" /></div>
+                            <div class="col-md-6"><label class="form-label fw-bold">Color</label><input type="text" class="form-control" @bind="editingFilament.Color" maxlength="30" /></div>
+                            <div class="col-md-3"><label class="form-label fw-bold">Price</label><input type="number" class="form-control" @bind="editingFilament.Price" min="0" max="99999" step="0.01" /></div>
+                            <div class="col-md-3"><label class="form-label fw-bold">Nozzle (°C)</label><input type="number" class="form-control" @bind="editingFilament.OptimalTemp" min="0" max="500" /></div>
+                            <div class="col-md-3"><label class="form-label fw-bold">Bed (°C)</label><input type="number" class="form-control" @bind="editingFilament.BedTemp" min="0" max="200" /></div>
+                            <div class="col-md-7"><label class="form-label fw-bold">Location</label><input type="text" class="form-control" @bind="editingFilament.StorageLocation" maxlength="50" /></div>
+                            <div class="col-md-5 mt-4 text-end"><div class="form-check form-switch pt-2"><input class="form-check-input" type="checkbox" @bind="editingFilament.IsInDryBox"><label class="form-check-label fw-bold">Dry Box Storage</label></div></div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer bg-light">
+                    <button class="btn btn-success w-100 fw-bold shadow" @onclick="HandleUpdate" data-bs-dismiss="modal">UPDATE CHANGES</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .text-truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .animate-pulse { animation: pulse-red 2s infinite; }
+    @@keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+</style>
+
+@code {
+    private List<FilamentResponseDto>? filaments;
+    private FilamentResponseDto newFilament = new() { MaterialType = "PLA+", TotalWeight = 1000, PurchaseDate = DateTime.Today };
+    private FilamentResponseDto? editingFilament;
+    private Dictionary<Guid, double> usageAmounts = new();
+    private Dictionary<Guid, WeightUnit> usageUnits = new();
+    private List<ToastMessage> toasts = new();
+    private string maxDate = DateTime.Today.ToString("yyyy-MM-dd");
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData() {
+        filaments = await FilamentService.GetFilamentsAsync();
+        foreach (var f in filaments) {
+            if (!usageAmounts.ContainsKey(f.Id)) usageAmounts[f.Id] = 0;
+            if (!usageUnits.ContainsKey(f.Id)) usageUnits[f.Id] = WeightUnit.Gram;
+        }
+        StateHasChanged();
+    }
+
+    private async Task ShowToast(string m, string t) {
+        var toast = new ToastMessage { Message = m, Type = t };
+        toasts.Add(toast); StateHasChanged();
+        await Task.Delay(3000); toasts.Remove(toast); StateHasChanged();
+    }
+
+    private async Task<bool> IsSafe(FilamentResponseDto f) {
+        if (string.IsNullOrWhiteSpace(f.Brand)) { await ShowToast("Brand name required!", "danger"); return false; }
+        if (f.Brand.Length > 50 || (f.StorageLocation?.Length > 50)) { await ShowToast("Text too long!", "danger"); return false; }
+        if (f.Price > 99999 || f.OptimalTemp > 500 || f.BedTemp > 200) { await ShowToast("Realistic numbers only!", "danger"); return false; }
+        return true;
+    }
+
+    @* --- STOCK DEDUCTION LOGIC --- *@
+    private async Task HandleDeduct(Guid id) {
+        var amount = usageAmounts[id];
+        var unit = usageUnits[id]; 
+
+        // Negatif değer veya çılgın sayı kontrolü (Toast aktif)
+        if (amount <= 0 || (unit == WeightUnit.Kilogram && amount > 100) || (unit == WeightUnit.Gram && amount > 100000)) { 
+            await ShowToast("Invalid usage amount!", "danger"); 
+            return; 
+        }
+
+        // Stoğun eksiye düşmemesi için ön kontrol
+        var filament = filaments?.FirstOrDefault(f => f.Id == id);
+        if (filament != null) {
+            double amountInGrams = unit == WeightUnit.Kilogram ? amount * 1000 : amount;
+            if (amountInGrams > filament.RemainingWeight) {
+                await ShowToast("Not enough filament left on this spool!", "warning");
+                return;
+            }
+        }
+
+        var ok = await FilamentService.UseStockAsync(id, new AdjustStockDto { Amount = amount, Unit = unit });
+        if (ok) { usageAmounts[id] = 0; await ShowToast("Stock reduced!", "success"); await LoadData(); }
+        else await ShowToast("Backend error.", "danger");
+    }
+
+    @* --- STOCK ADDITION LOGIC (FIZIK KURALLARI EKLENDI) --- *@
+    private async Task HandleAddStock(Guid id) {
+        var amount = usageAmounts[id];
+        var unit = usageUnits[id]; 
+
+        // Negatif değer veya çılgın sayı kontrolü (Toast aktif)
+        if (amount <= 0 || (unit == WeightUnit.Kilogram && amount > 100) || (unit == WeightUnit.Gram && amount > 100000)) { 
+            await ShowToast("Invalid amount to add!", "danger"); 
+            return; 
+        }
+
+        // Kapasite taşma kontrolü (1kg'lık makaraya 5kg basılmasını engeller)
+        var filament = filaments?.FirstOrDefault(f => f.Id == id);
+        if (filament != null) {
+            double amountInGrams = unit == WeightUnit.Kilogram ? amount * 1000 : amount;
+            if (filament.RemainingWeight + amountInGrams > filament.TotalWeight) {
+                await ShowToast($"Cannot exceed original spool capacity ({filament.TotalWeight}g)!", "warning");
+                return;
+            }
+        }
+
+        var ok = await FilamentService.AddStockAsync(id, new AdjustStockDto { Amount = amount, Unit = unit });
+        if (ok) { usageAmounts[id] = 0; await ShowToast("Stock refilled!", "success"); await LoadData(); }
+        else await ShowToast("Backend error.", "danger");
+    }
+
+    private async Task SaveNewFilament() {
+        if (!(await IsSafe(newFilament))) return;
+        await FilamentService.CreateFilamentAsync(newFilament);
+        newFilament = new() { MaterialType = "PLA+", TotalWeight = 1000, PurchaseDate = DateTime.Today };
+        await ShowToast("New spool added.", "success");
+        await LoadData();
+    }
+
+    private async Task OpenEditModal(FilamentResponseDto item) {
+        editingFilament = new FilamentResponseDto {
+            Id = item.Id, Brand = item.Brand, MaterialType = item.MaterialType, 
+            Color = item.Color, Price = item.Price, OptimalTemp = item.OptimalTemp, 
+            BedTemp = item.BedTemp, StorageLocation = item.StorageLocation, 
+            IsInDryBox = item.IsInDryBox, TotalWeight = item.TotalWeight, 
+            RemainingWeight = item.RemainingWeight
+        };
+        await JS.InvokeVoidAsync("bootstrapModalAction", "editSpoolModal", "show");
+    }
+
+    private async Task HandleUpdate() {
+        if (editingFilament == null || !(await IsSafe(editingFilament))) return;
+        var ok = await FilamentService.UpdateFilamentAsync(editingFilament.Id, editingFilament);
+        if (ok) { await ShowToast("Settings updated!", "success"); await LoadData(); }
+        else await ShowToast("Update failed.", "danger");
+    }
+
+    private async Task HandleDelete(Guid id) {
+        if (await JS.InvokeAsync<bool>("confirm", "Permanently delete this spool?")) {
+            await FilamentService.DeleteFilamentAsync(id); 
+            await ShowToast("Spool removed.", "info");
+            await LoadData();
+        }
+    }
+
+    public class ToastMessage { public string Message { get; set; } = ""; public string Type { get; set; } = "info"; }
+}
